@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { ref, push, onValue, set } from "firebase/database";
+import { db } from "./firebase";
 import {
   Home,
   Ticket,
@@ -24,7 +26,8 @@ import {
   ShieldCheck,
   IdCard,
   BookOpen,
-  Layers
+  Layers,
+  UserCheck
 } from "lucide-react";
 import type { StudentInfo, QueueInfo, DocumentRequest } from "./types";
 import "./App.css";
@@ -64,7 +67,7 @@ const App: React.FC = () => {
 
   // Modal States
   const [activeModal, setActiveModal] = useState<
-    "queue" | "balance" | "requestDoc" | "myRequests" | "about" | null
+    "queue" | "balance" | "requestDoc" | "myRequests" | "about" | "staff" | null
   >(null);
 
   // Queue & Action States
@@ -82,6 +85,10 @@ const App: React.FC = () => {
     department: null,
   });
 
+  // Staff State
+  const [staffDept, setStaffDept] = useState<string>("Accounting");
+  const [staffNextNum, setStaffNextNum] = useState<number>(102);
+
   // Document Requests State
   const [documentRequests, setDocumentRequests] = useState<DocumentRequest[]>([]);
 
@@ -93,32 +100,33 @@ const App: React.FC = () => {
     }, 4000);
   };
 
-  // Live Queue Progression Simulation
+  // Realtime Firebase Listener (Makinig sa updates galing sa Staff)
   useEffect(() => {
-    if (!isSetupComplete) return;
+    const queueRef = ref(db, "currentQueue");
 
-    const interval = setInterval(() => {
-      setQueue((prevQueue) => {
-        const currentNum = parseInt(prevQueue.nowServing.replace("#", ""));
-        const nextNum = currentNum + 1;
-        const newNowServing = `#${nextNum}`;
+    const unsubscribe = onValue(queueRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setQueue((prevQueue) => {
+          let newPeopleAhead = prevQueue.peopleAhead;
+          if (prevQueue.yourNumber) {
+            const myNum = parseInt(prevQueue.yourNumber.replace("#", ""));
+            const currentNum = parseInt((data.nowServing || "#0").replace("#", ""));
+            newPeopleAhead = Math.max(0, myNum - currentNum);
+          }
 
-        let newPeopleAhead = prevQueue.peopleAhead;
-        if (prevQueue.yourNumber) {
-          const myNum = parseInt(prevQueue.yourNumber.replace("#", ""));
-          newPeopleAhead = Math.max(0, myNum - nextNum);
-        }
+          return {
+            ...prevQueue,
+            nowServing: data.nowServing || "#101",
+            servingDepartment: data.servingDepartment || "Accounting",
+            peopleAhead: newPeopleAhead,
+          };
+        });
+      }
+    });
 
-        return {
-          ...prevQueue,
-          nowServing: newNowServing,
-          peopleAhead: newPeopleAhead,
-        };
-      });
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, [isSetupComplete]);
+    return () => unsubscribe();
+  }, []);
 
   // Handle Onboarding Setup Form Submit
   const handleSetupSubmit = (e: React.FormEvent) => {
@@ -141,12 +149,24 @@ const App: React.FC = () => {
     showToast(`Welcome, ${formInput.name}!`);
   };
 
-  // Queue Ticket Handler
+  // Queue Ticket Handler (Pinapadala sa Firebase Realtime DB)
   const handleGetQueueNumber = (e: React.FormEvent) => {
     e.preventDefault();
     const currentNum = parseInt(queue.nowServing.replace("#", ""));
     const generatedNum = `#${currentNum + Math.floor(Math.random() * 4) + 2}`;
     const calculatedAhead = parseInt(generatedNum.replace("#", "")) - currentNum;
+
+    // Push sa Firebase
+    push(ref(db, "queues"), {
+      ticketNumber: generatedNum,
+      studentName: student.name,
+      studentId: student.studentId,
+      block: student.block,
+      course: student.course,
+      department: selectedDept,
+      status: "Waiting",
+      createdAt: Date.now()
+    });
 
     setQueue({
       ...queue,
@@ -157,6 +177,21 @@ const App: React.FC = () => {
 
     setActiveModal(null);
     showToast(`Ticket ${generatedNum} generated for ${selectedDept}!`);
+  };
+
+  // Staff Action: Tumawag ng susunod na number at i-broadcast sa Firebase
+  const handleStaffCallNext = () => {
+    const nextTicket = `#${staffNextNum}`;
+    
+    // Set updated queue status to Firebase
+    set(ref(db, "currentQueue"), {
+      nowServing: nextTicket,
+      servingDepartment: staffDept,
+      updatedAt: Date.now()
+    });
+
+    setStaffNextNum(staffNextNum + 1);
+    showToast(`Staff called ticket ${nextTicket} for ${staffDept}`);
   };
 
   // Document Request Handler
@@ -175,17 +210,15 @@ const App: React.FC = () => {
     showToast(`Request submitted for ${selectedDoc}.`);
   };
 
-  // Modern Upgraded Onboarding Screen (If not complete)
+  // Onboarding Screen
   if (!isSetupComplete) {
     return (
       <div className={`onboarding-container ${isDarkMode ? "dark" : ""}`}>
-        {/* Ambient Glowing Orbs */}
         <div className="bg-glow-1"></div>
         <div className="bg-glow-2"></div>
         <div className="bg-glow-3"></div>
 
         <div className="onboarding-card hero-glass-card">
-          {/* Top Badge */}
           <div className="portal-badge">
             <Sparkles size={14} className="badge-sparkle" />
             <span>CCDI Student Portal Verification</span>
@@ -300,7 +333,7 @@ const App: React.FC = () => {
     );
   }
 
-  // Main Dashboard
+  // Main Dashboard Interface
   return (
     <div className={`dashboard-container ${isDarkMode ? "dark" : ""}`}>
       {/* Toast Notification */}
@@ -311,7 +344,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="brand">
           <div className="logo-icon">
@@ -368,6 +401,16 @@ const App: React.FC = () => {
           </button>
 
           <div className="nav-divider"></div>
+
+          <button
+            className={`nav-item ${activeTab === "staff" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("staff");
+              setActiveModal("staff");
+            }}
+          >
+            <UserCheck size={18} /> Staff Console
+          </button>
 
           <button
             className={`nav-item ${activeTab === "about" ? "active" : ""}`}
@@ -432,7 +475,7 @@ const App: React.FC = () => {
             </div>
           </section>
 
-          {/* Cards Grid */}
+          {/* Service Cards Grid */}
           <section className="cards-grid">
             <div className="service-card" onClick={() => setActiveModal("queue")}>
               <div className="card-left">
@@ -495,7 +538,7 @@ const App: React.FC = () => {
             </div>
           </section>
 
-          {/* Queue Section */}
+          {/* Real-time Queue Section */}
           <section className="queue-section">
             <div className="queue-header">
               <div className="queue-title">
@@ -504,9 +547,9 @@ const App: React.FC = () => {
               </div>
               <div className="queue-meta">
                 <span className="live-badge">
-                  <span className="live-dot"></span> Live Now
+                  <span className="live-dot"></span> Live Realtime
                 </span>
-                <span>Sep 13, 2026 10:33 PM</span>
+                <span>CCDI Live Sync</span>
               </div>
             </div>
 
@@ -548,7 +591,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Modals */}
+      {/* Modals Container */}
       {activeModal && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -702,6 +745,47 @@ const App: React.FC = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Modal: Staff Controller (Simulated Staff Interface) */}
+            {activeModal === "staff" && (
+              <div>
+                <h2>Staff Control Panel</h2>
+                <p className="modal-desc">
+                  Gamitin ito para tumawag ng mga bagong ticket number papunta sa dashboard ng mga estudyante.
+                </p>
+
+                <div className="form-group" style={{ marginTop: "15px" }}>
+                  <label>Staff Counter / Department:</label>
+                  <select
+                    value={staffDept}
+                    onChange={(e) => setStaffDept(e.target.value)}
+                    className="form-control"
+                  >
+                    <option value="Accounting">Accounting Office</option>
+                    <option value="Cashier">Cashier</option>
+                    <option value="Registrar">Registrar Office</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Next Ticket to Call:</label>
+                  <input
+                    type="number"
+                    value={staffNextNum}
+                    onChange={(e) => setStaffNextNum(parseInt(e.target.value) || 100)}
+                    className="form-control"
+                  />
+                </div>
+
+                <button
+                  onClick={handleStaffCallNext}
+                  className="btn-primary"
+                  style={{ width: "100%", padding: "12px", marginTop: "10px", fontWeight: "bold" }}
+                >
+                  Call Ticket #{staffNextNum} ({staffDept})
+                </button>
               </div>
             )}
 
