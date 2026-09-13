@@ -27,7 +27,8 @@ import {
   IdCard,
   BookOpen,
   Layers,
-  UserCheck
+  UserCheck,
+  Volume2
 } from "lucide-react";
 import type { StudentInfo, QueueInfo, DocumentRequest } from "./types";
 import "./App.css";
@@ -37,7 +38,7 @@ const App: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("home");
 
-  // Flow State: false if needs onboarding, true when submitted
+  // Flow State
   const [isSetupComplete, setIsSetupComplete] = useState<boolean>(false);
 
   // Form input state for onboarding
@@ -49,7 +50,7 @@ const App: React.FC = () => {
     block: "Block A",
   });
 
-  // Student State (populated after setup)
+  // Student State
   const [student, setStudent] = useState<StudentInfo>({
     name: "",
     studentId: "",
@@ -70,6 +71,10 @@ const App: React.FC = () => {
     "queue" | "balance" | "requestDoc" | "myRequests" | "about" | "staff" | null
   >(null);
 
+  // Called Ticket Popup Alert State
+  const [showTurnAlert, setShowTurnAlert] = useState<boolean>(false);
+  const [calledDepartment, setCalledDepartment] = useState<string>("");
+
   // Queue & Action States
   const [selectedDept, setSelectedDept] = useState<string>("Accounting");
   const [selectedDoc, setSelectedDoc] = useState<string>("Certificate of Enrollment (COE)");
@@ -87,7 +92,7 @@ const App: React.FC = () => {
 
   // Staff State
   const [staffDept, setStaffDept] = useState<string>("Accounting");
-  const [staffNextNum, setStaffNextNum] = useState<number>(102);
+  const [staffNextNum, setStaffNextNum] = useState<number>(107);
 
   // Document Requests State
   const [documentRequests, setDocumentRequests] = useState<DocumentRequest[]>([]);
@@ -100,25 +105,38 @@ const App: React.FC = () => {
     }, 4000);
   };
 
-  // Realtime Firebase Listener (Makinig sa updates galing sa Staff)
+  // Realtime Firebase Listener at Automatic Alert Trigger
   useEffect(() => {
     const queueRef = ref(db, "currentQueue");
 
     const unsubscribe = onValue(queueRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
+        const liveNowServing = data.nowServing || "#101";
+        const liveDepartment = data.servingDepartment || "Accounting";
+
         setQueue((prevQueue) => {
           let newPeopleAhead = prevQueue.peopleAhead;
+
           if (prevQueue.yourNumber) {
             const myNum = parseInt(prevQueue.yourNumber.replace("#", ""));
-            const currentNum = parseInt((data.nowServing || "#0").replace("#", ""));
+            const currentNum = parseInt(liveNowServing.replace("#", ""));
             newPeopleAhead = Math.max(0, myNum - currentNum);
+
+            // REALTIME ALERT CHECK: Kapag tumugma ang Ticket Number at Department!
+            if (
+              prevQueue.yourNumber === liveNowServing &&
+              (prevQueue.department === liveDepartment || !prevQueue.department)
+            ) {
+              setCalledDepartment(liveDepartment);
+              setShowTurnAlert(true);
+            }
           }
 
           return {
             ...prevQueue,
-            nowServing: data.nowServing || "#101",
-            servingDepartment: data.servingDepartment || "Accounting",
+            nowServing: liveNowServing,
+            servingDepartment: liveDepartment,
             peopleAhead: newPeopleAhead,
           };
         });
@@ -128,7 +146,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Handle Onboarding Setup Form Submit
+  // Onboarding Submit
   const handleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formInput.name.trim() || !formInput.studentId.trim()) {
@@ -149,14 +167,13 @@ const App: React.FC = () => {
     showToast(`Welcome, ${formInput.name}!`);
   };
 
-  // Queue Ticket Handler (Pinapadala sa Firebase Realtime DB)
+  // Queue Ticket Handler
   const handleGetQueueNumber = (e: React.FormEvent) => {
     e.preventDefault();
     const currentNum = parseInt(queue.nowServing.replace("#", ""));
-    const generatedNum = `#${currentNum + Math.floor(Math.random() * 4) + 2}`;
+    const generatedNum = `#${currentNum + Math.floor(Math.random() * 3) + 1}`;
     const calculatedAhead = parseInt(generatedNum.replace("#", "")) - currentNum;
 
-    // Push sa Firebase
     push(ref(db, "queues"), {
       ticketNumber: generatedNum,
       studentName: student.name,
@@ -179,11 +196,10 @@ const App: React.FC = () => {
     showToast(`Ticket ${generatedNum} generated for ${selectedDept}!`);
   };
 
-  // Staff Action: Tumawag ng susunod na number at i-broadcast sa Firebase
+  // Staff Call Next Handler
   const handleStaffCallNext = () => {
     const nextTicket = `#${staffNextNum}`;
     
-    // Set updated queue status to Firebase
     set(ref(db, "currentQueue"), {
       nowServing: nextTicket,
       servingDepartment: staffDept,
@@ -210,7 +226,6 @@ const App: React.FC = () => {
     showToast(`Request submitted for ${selectedDoc}.`);
   };
 
-  // Onboarding Screen
   if (!isSetupComplete) {
     return (
       <div className={`onboarding-container ${isDarkMode ? "dark" : ""}`}>
@@ -333,7 +348,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Main Dashboard Interface
   return (
     <div className={`dashboard-container ${isDarkMode ? "dark" : ""}`}>
       {/* Toast Notification */}
@@ -591,7 +605,71 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Modals Container */}
+      {/* POP-UP ALERT MODAL: IT'S YOUR TURN! */}
+      {showTurnAlert && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div
+            className="modal-content"
+            style={{
+              textAlign: "center",
+              padding: "35px 25px",
+              maxWidth: "420px",
+              border: "3px solid #2563eb",
+              borderRadius: "20px",
+              animation: "popIn 0.3s ease-out forwards"
+            }}
+          >
+            <div
+              style={{
+                width: "70px",
+                height: "70px",
+                borderRadius: "50%",
+                backgroundColor: "#dbeafe",
+                color: "#2563eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 15px auto"
+              }}
+            >
+              <Volume2 size={36} className="badge-sparkle" />
+            </div>
+
+            <h2 style={{ fontSize: "24px", color: "#1e293b", marginBottom: "8px" }}>
+              Ikaw na ang Tinatawag!
+            </h2>
+            <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+              Pumunta na agad sa counter ng <strong>{calledDepartment}</strong>.
+            </p>
+
+            <div
+              style={{
+                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                color: "#ffffff",
+                padding: "15px",
+                borderRadius: "12px",
+                fontSize: "36px",
+                fontWeight: "bold",
+                letterSpacing: "2px",
+                marginBottom: "20px",
+                boxShadow: "0 10px 15px -3px rgba(37, 99, 235, 0.3)"
+              }}
+            >
+              {queue.yourNumber}
+            </div>
+
+            <button
+              className="btn-primary"
+              style={{ width: "100%", padding: "12px", fontSize: "15px", fontWeight: "bold" }}
+              onClick={() => setShowTurnAlert(false)}
+            >
+              Naiintindihan Ko / Proceed to Counter
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Standard Modals Container */}
       {activeModal && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -614,8 +692,8 @@ const App: React.FC = () => {
                       onChange={(e) => setSelectedDept(e.target.value)}
                       className="form-control"
                     >
-                      <option value="Accounting">Accounting Office</option>
                       <option value="Cashier">Cashier</option>
+                      <option value="Accounting">Accounting Office</option>
                       <option value="Registrar">Registrar Office</option>
                     </select>
                   </div>
@@ -748,7 +826,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Modal: Staff Controller (Simulated Staff Interface) */}
+            {/* Modal: Staff Controller */}
             {activeModal === "staff" && (
               <div>
                 <h2>Staff Control Panel</h2>
@@ -763,8 +841,8 @@ const App: React.FC = () => {
                     onChange={(e) => setStaffDept(e.target.value)}
                     className="form-control"
                   >
-                    <option value="Accounting">Accounting Office</option>
                     <option value="Cashier">Cashier</option>
+                    <option value="Accounting">Accounting Office</option>
                     <option value="Registrar">Registrar Office</option>
                   </select>
                 </div>
