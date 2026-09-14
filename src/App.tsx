@@ -28,13 +28,16 @@ import {
   BookOpen,
   Layers,
   UserCheck,
-  Volume2
+  Volume2,
+  Activity,
+  Wifi,
+  ArrowUpRight
 } from "lucide-react";
 import type { StudentInfo, QueueInfo, DocumentRequest } from "./types";
 import "./App.css";
 
 const App: React.FC = () => {
-  // Splash Screen State (3 Seconds Intro Animation)
+  // Splash Screen State (4-second smooth intro)
   const [showSplash, setShowSplash] = useState<boolean>(true);
   const [splashExiting, setSplashExiting] = useState<boolean>(false);
 
@@ -101,15 +104,17 @@ const App: React.FC = () => {
   // Document Requests State
   const [documentRequests, setDocumentRequests] = useState<DocumentRequest[]>([]);
 
-  // 3-Second Splash Animation Timer Effect
+  // 4-second splash: keep the scene stable, then use a compositor-only crossfade
   useEffect(() => {
+    // 0.0s - 3.2s: splash is fully visible.
+    // 3.3s - 4.0s: lightweight opacity-only fade revealing a pre-rendered portal.
     const exitTimer = window.setTimeout(() => {
       setSplashExiting(true);
-    }, 2400);
+    }, 3300);
 
     const hideTimer = window.setTimeout(() => {
       setShowSplash(false);
-    }, 3000);
+    }, 4000);
 
     return () => {
       window.clearTimeout(exitTimer);
@@ -126,7 +131,10 @@ const App: React.FC = () => {
   };
 
   // Realtime Firebase Listener at Automatic Alert Trigger
+  // Start it after the splash so network/state work cannot interrupt the intro transition.
   useEffect(() => {
+    if (showSplash) return;
+
     const queueRef = ref(db, "currentQueue");
 
     const unsubscribe = onValue(queueRef, (snapshot) => {
@@ -164,7 +172,7 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [showSplash]);
 
   // Onboarding Submit
   const handleSetupSubmit = (e: React.FormEvent) => {
@@ -246,6 +254,10 @@ const App: React.FC = () => {
     showToast(`Request submitted for ${selectedDoc}.`);
   };
 
+  // Keep the portal fully rendered behind the opaque splash.
+  // This avoids painting/mounting the login page during the fade itself.
+  const portalTransitionClass = showSplash ? "portal-underlay" : "portal-ready";
+
   // Premium splash stays mounted above the portal so both screens can crossfade smoothly.
   const splashOverlay = showSplash ? (
       <div className={`splash-screen premium-splash ${splashExiting ? "splash-exit" : ""}`}>
@@ -258,7 +270,7 @@ const App: React.FC = () => {
         <div className="splash-aurora aurora-three" aria-hidden="true"></div>
 
         <div className="splash-particles" aria-hidden="true">
-          {Array.from({ length: 14 }, (_, index) => (
+          {Array.from({ length: 8 }, (_, index) => (
             <span key={index} className={`particle particle-${index + 1}`}></span>
           ))}
         </div>
@@ -299,7 +311,7 @@ const App: React.FC = () => {
                 <span className="status-dot"></span>
                 Initializing portal
               </span>
-              <span className="loader-percent">100%</span>
+              <span className="loader-percent">Loading</span>
             </div>
 
             <div className="splash-loader-bar premium-loader">
@@ -325,9 +337,7 @@ const App: React.FC = () => {
       <>
         {splashOverlay}
         <div
-          className={`onboarding-container ${isDarkMode ? "dark" : ""} ${
-            showSplash && !splashExiting ? "portal-preload" : "portal-reveal"
-          }`}
+          className={`onboarding-container ${isDarkMode ? "dark" : ""} ${portalTransitionClass}`}
         >
         <div className="bg-glow-1"></div>
         <div className="bg-glow-2"></div>
@@ -453,9 +463,7 @@ const App: React.FC = () => {
     <>
       {splashOverlay}
       <div
-        className={`dashboard-container ${isDarkMode ? "dark" : ""} ${
-          showSplash && !splashExiting ? "portal-preload" : "portal-reveal"
-        }`}
+        className={`dashboard-container ${isDarkMode ? "dark" : ""} ${portalTransitionClass}`}
       >
       {/* Toast Notification */}
       {notification && (
@@ -478,11 +486,14 @@ const App: React.FC = () => {
         </div>
 
         <nav className="nav-menu">
+          <span className="nav-section-label">Student Services</span>
+
           <button
             className={`nav-item ${activeTab === "home" ? "active" : ""}`}
             onClick={() => setActiveTab("home")}
           >
-            <Home size={18} /> Home
+            <span className="nav-icon"><Home size={18} /></span>
+            <span>Home</span>
           </button>
           <button
             className={`nav-item ${activeTab === "queue" ? "active" : ""}`}
@@ -491,7 +502,8 @@ const App: React.FC = () => {
               setActiveModal("queue");
             }}
           >
-            <Ticket size={18} /> Get Number
+            <span className="nav-icon"><Ticket size={18} /></span>
+            <span>Get Number</span>
           </button>
           <button
             className={`nav-item ${activeTab === "balance" ? "active" : ""}`}
@@ -500,7 +512,8 @@ const App: React.FC = () => {
               setActiveModal("balance");
             }}
           >
-            <BarChart2 size={18} /> Check Balance
+            <span className="nav-icon"><BarChart2 size={18} /></span>
+            <span>Check Balance</span>
           </button>
           <button
             className={`nav-item ${activeTab === "requestDoc" ? "active" : ""}`}
@@ -509,7 +522,8 @@ const App: React.FC = () => {
               setActiveModal("requestDoc");
             }}
           >
-            <FileText size={18} /> Request Document
+            <span className="nav-icon"><FileText size={18} /></span>
+            <span>Request Document</span>
           </button>
           <button
             className={`nav-item ${activeTab === "myRequests" ? "active" : ""}`}
@@ -518,10 +532,12 @@ const App: React.FC = () => {
               setActiveModal("myRequests");
             }}
           >
-            <FolderCheck size={18} /> My Request
+            <span className="nav-icon"><FolderCheck size={18} /></span>
+            <span>My Request</span>
           </button>
 
           <div className="nav-divider"></div>
+          <span className="nav-section-label">System</span>
 
           <button
             className={`nav-item ${activeTab === "staff" ? "active" : ""}`}
@@ -530,7 +546,8 @@ const App: React.FC = () => {
               setActiveModal("staff");
             }}
           >
-            <UserCheck size={18} /> Staff Console
+            <span className="nav-icon"><UserCheck size={18} /></span>
+            <span>Staff Console</span>
           </button>
 
           <button
@@ -540,166 +557,263 @@ const App: React.FC = () => {
               setActiveModal("about");
             }}
           >
-            <Info size={18} /> About
+            <span className="nav-icon"><Info size={18} /></span>
+            <span>About</span>
           </button>
         </nav>
+
+        <div className="sidebar-system-card">
+          <div className="system-status-icon"><Activity size={16} /></div>
+          <div className="system-status-copy">
+            <strong>All systems operational</strong>
+            <span><i></i> Live services connected</span>
+          </div>
+        </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="main-content">
         <header className="header">
-          <button
-            className="theme-toggle-btn"
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            title="Toggle Theme"
-          >
-            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-
-          <div className="header-user">
-            <div className="avatar">
-              <User size={20} />
+          <div className="header-context">
+            <div className="header-title-row">
+              <span className="header-kicker"><Activity size={13} /> Student Dashboard</span>
+              <span className="header-online"><i></i> System Online</span>
             </div>
-            <div>
-              <span className="user-name">{student.name}</span>
-              <span className="user-role">{student.studentId} • {student.block}</span>
-            </div>
-            <ChevronDown size={16} className="chevron-icon" />
+            <p>CCDI Sorsogon • Queueing & Student Services</p>
           </div>
-          <Bell
-            size={20}
-            className="bell-icon"
-            onClick={() => showToast("No new notifications")}
-          />
+
+          <div className="header-actions">
+            <button
+              className="theme-toggle-btn"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              title="Toggle Theme"
+              aria-label="Toggle theme"
+            >
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            <button className="header-user" type="button" aria-label="Student profile">
+              <div className="avatar">
+                <User size={20} />
+              </div>
+              <div className="header-user-copy">
+                <span className="user-name">{student.name}</span>
+                <span className="user-role">{student.studentId} • {student.block}</span>
+              </div>
+              <ChevronDown size={16} className="chevron-icon" />
+            </button>
+
+            <button
+              className="notification-btn"
+              type="button"
+              aria-label="Notifications"
+              onClick={() => showToast("No new notifications")}
+            >
+              <Bell size={20} className="bell-icon" />
+              <span className="notification-dot"></span>
+            </button>
+          </div>
         </header>
 
         <div className="content-body">
           {/* Hero Banner */}
           <section className="hero-banner">
+            <div className="hero-mesh" aria-hidden="true"></div>
+            <div className="hero-orbit hero-orbit-one" aria-hidden="true"></div>
+            <div className="hero-orbit hero-orbit-two" aria-hidden="true"></div>
+
             <div className="banner-left">
-              <h1>Welcome,</h1>
+              <div className="hero-status-pill">
+                <span className="hero-status-dot"></span>
+                Student Services Portal • Live
+              </div>
+
+              <h1>Welcome back,</h1>
               <div className="user-name-title">{student.name}!</div>
-              <p className="role">
-                <GraduationCap size={16} style={{ display: "inline", marginRight: "6px" }} />
-                {student.course} ({student.yearLevel} - {student.block})
-              </p>
-              <p className="subtext">
-                ID: {student.studentId} | CCDI Sorsogon Queueing & Services System
-              </p>
+
+              <div className="hero-role-pill">
+                <GraduationCap size={16} />
+                <span>{student.course}</span>
+                <span className="hero-role-divider"></span>
+                <span>{student.yearLevel}</span>
+                <span className="hero-role-divider"></span>
+                <span>{student.block}</span>
+              </div>
+
+              <div className="hero-meta-row">
+                <span><IdCard size={14} /> ID: {student.studentId}</span>
+                <span><Wifi size={14} /> Realtime sync active</span>
+              </div>
             </div>
+
             <div className="banner-right">
-              <div className="banner-quote">"Your Future Starts Here."</div>
-              <div className="building-label">
-                <span>CCDI</span>
-                <span style={{ fontSize: "11px", opacity: 0.8 }}>SORSOGON CAMPUS</span>
+              <div className="hero-live-card">
+                <div className="hero-live-card-top">
+                  <span>Current Queue</span>
+                  <span className="hero-live-badge"><i></i> LIVE</span>
+                </div>
+                <span className="hero-live-label">Now Serving</span>
+                <strong className="hero-live-number">{queue.nowServing}</strong>
+                <span className="hero-live-dept">{queue.servingDepartment}</span>
+              </div>
+
+              <div className="hero-campus-signature">
+                <span className="hero-quote">“Your Future Starts Here.”</span>
+                <strong>CCDI</strong>
+                <small>SORSOGON CAMPUS</small>
               </div>
             </div>
           </section>
 
-          {/* Service Cards Grid */}
-          <section className="cards-grid">
-            <div className="service-card" onClick={() => setActiveModal("queue")}>
-              <div className="card-left">
-                <div className="icon-box blue">
-                  <Ticket size={24} />
-                </div>
-                <div className="card-text">
-                  <h3>Get Number</h3>
-                  <p>Get a queue number for your chosen service.</p>
-                </div>
+          {/* Quick Actions */}
+          <section className="services-section">
+            <div className="section-heading-row">
+              <div>
+                <span className="section-eyebrow">Quick Access</span>
+                <h2 className="section-heading-title">Student Services</h2>
+                <p>Access your most-used services in one place.</p>
               </div>
-              <div className="arrow-box">
-                <ChevronRight size={18} />
-              </div>
+              <span className="section-count">4 services</span>
             </div>
 
-            <div className="service-card" onClick={() => setActiveModal("balance")}>
-              <div className="card-left">
-                <div className="icon-box green">
-                  <BarChart2 size={24} />
+            <div className="cards-grid">
+              <button
+                type="button"
+                className="service-card service-blue"
+                onClick={() => {
+                  setActiveTab("queue");
+                  setActiveModal("queue");
+                }}
+              >
+                <div className="card-left">
+                  <div className="icon-box blue"><Ticket size={24} /></div>
+                  <div className="card-text">
+                    <span className="card-eyebrow">Queue</span>
+                    <h3>Get Number</h3>
+                    <p>Join a service queue instantly.</p>
+                  </div>
                 </div>
-                <div className="card-text">
-                  <h3>Check Balance</h3>
-                  <p>Check your account balance and other fees.</p>
-                </div>
-              </div>
-              <div className="arrow-box">
-                <ChevronRight size={18} />
-              </div>
-            </div>
+                <div className="arrow-box"><ArrowUpRight size={18} /></div>
+              </button>
 
-            <div className="service-card" onClick={() => setActiveModal("requestDoc")}>
-              <div className="card-left">
-                <div className="icon-box orange">
-                  <FileText size={24} />
+              <button
+                type="button"
+                className="service-card service-green"
+                onClick={() => {
+                  setActiveTab("balance");
+                  setActiveModal("balance");
+                }}
+              >
+                <div className="card-left">
+                  <div className="icon-box green"><BarChart2 size={24} /></div>
+                  <div className="card-text">
+                    <span className="card-eyebrow">Finance</span>
+                    <h3>Check Balance</h3>
+                    <p>View tuition and outstanding fees.</p>
+                  </div>
                 </div>
-                <div className="card-text">
-                  <h3>Request Document</h3>
-                  <p>Submit a request for required documents.</p>
-                </div>
-              </div>
-              <div className="arrow-box">
-                <ChevronRight size={18} />
-              </div>
-            </div>
+                <div className="arrow-box"><ArrowUpRight size={18} /></div>
+              </button>
 
-            <div className="service-card" onClick={() => setActiveModal("myRequests")}>
-              <div className="card-left">
-                <div className="icon-box purple">
-                  <FolderCheck size={24} />
+              <button
+                type="button"
+                className="service-card service-orange"
+                onClick={() => {
+                  setActiveTab("requestDoc");
+                  setActiveModal("requestDoc");
+                }}
+              >
+                <div className="card-left">
+                  <div className="icon-box orange"><FileText size={24} /></div>
+                  <div className="card-text">
+                    <span className="card-eyebrow">Registrar</span>
+                    <h3>Request Document</h3>
+                    <p>Request official school documents.</p>
+                  </div>
                 </div>
-                <div className="card-text">
-                  <h3>My Request</h3>
-                  <p>View the status of your document requests.</p>
+                <div className="arrow-box"><ArrowUpRight size={18} /></div>
+              </button>
+
+              <button
+                type="button"
+                className="service-card service-purple"
+                onClick={() => {
+                  setActiveTab("myRequests");
+                  setActiveModal("myRequests");
+                }}
+              >
+                <div className="card-left">
+                  <div className="icon-box purple"><FolderCheck size={24} /></div>
+                  <div className="card-text">
+                    <span className="card-eyebrow">Tracking</span>
+                    <h3>My Requests</h3>
+                    <p>Track your submitted document requests.</p>
+                  </div>
                 </div>
-              </div>
-              <div className="arrow-box">
-                <ChevronRight size={18} />
-              </div>
+                <div className="arrow-box"><ArrowUpRight size={18} /></div>
+              </button>
             </div>
           </section>
 
           {/* Real-time Queue Section */}
           <section className="queue-section">
             <div className="queue-header">
-              <div className="queue-title">
-                <Users size={20} className="queue-icon" />
-                <h3 className="section-title">Current Queue</h3>
+              <div className="queue-title-wrap">
+                <div className="queue-title-icon"><Users size={20} /></div>
+                <div>
+                  <span className="section-eyebrow">Realtime Monitor</span>
+                  <h3 className="section-title">Current Queue</h3>
+                </div>
               </div>
+
               <div className="queue-meta">
-                <span className="live-badge">
-                  <span className="live-dot"></span> Live Realtime
-                </span>
-                <span>CCDI Live Sync</span>
+                <span className="live-badge"><span className="live-dot"></span> Live Realtime</span>
+                <span className="sync-copy"><Wifi size={14} /> CCDI Live Sync</span>
               </div>
             </div>
 
             <p className="queue-subtext">
-              Live queue status for Accounting, Cashier, and Registrar Services
+              Live queue status for Accounting, Cashier, and Registrar Services.
             </p>
 
             <div className="queue-grid">
               <div className="queue-card serving">
-                <h4>Now Serving</h4>
+                <div className="queue-card-head">
+                  <span>Now Serving</span>
+                  <span className="queue-card-icon"><Activity size={17} /></span>
+                </div>
                 <div className="number">{queue.nowServing}</div>
                 <div className="sub-info">{queue.servingDepartment}</div>
+                <div className="queue-card-foot"><span className="queue-pulse"></span> Counter is currently active</div>
               </div>
 
               <div className="queue-card ticket">
-                <h4>Your Number</h4>
-                <div className="number">
+                <div className="queue-card-head">
+                  <span>Your Number</span>
+                  <span className="queue-card-icon"><Ticket size={17} /></span>
+                </div>
+                <div className={`number ${!queue.yourNumber ? "number-empty" : ""}`}>
                   {queue.yourNumber ? queue.yourNumber : "No Ticket"}
                 </div>
                 <div className="sub-info">
                   {queue.yourNumber ? (
-                    <>
-                      <Users size={14} /> {queue.peopleAhead} people on line (
-                      {queue.department})
-                    </>
+                    <><Users size={14} /> {queue.peopleAhead} ahead • {queue.department}</>
                   ) : (
-                    "Click 'Get Number' to queue"
+                    "You are not currently in a queue"
                   )}
                 </div>
+                {!queue.yourNumber && (
+                  <button
+                    type="button"
+                    className="queue-inline-action"
+                    onClick={() => {
+                      setActiveTab("queue");
+                      setActiveModal("queue");
+                    }}
+                  >
+                    Get a queue number <ArrowRight size={15} />
+                  </button>
+                )}
               </div>
             </div>
           </section>
@@ -714,63 +828,22 @@ const App: React.FC = () => {
 
       {/* POP-UP ALERT MODAL: IT'S YOUR TURN! */}
       {showTurnAlert && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div
-            className="modal-content"
-            style={{
-              textAlign: "center",
-              padding: "35px 25px",
-              maxWidth: "420px",
-              border: "3px solid #2563eb",
-              borderRadius: "20px",
-              animation: "popIn 0.3s ease-out forwards"
-            }}
-          >
-            <div
-              style={{
-                width: "70px",
-                height: "70px",
-                borderRadius: "50%",
-                backgroundColor: "#dbeafe",
-                color: "#2563eb",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 15px auto"
-              }}
-            >
-              <Volume2 size={36} className="badge-sparkle" />
-            </div>
-
-            <h2 style={{ fontSize: "24px", color: "#1e293b", marginBottom: "8px" }}>
-              Ikaw na ang Tinatawag!
-            </h2>
-            <p style={{ color: "#64748b", fontSize: "14px", marginBottom: "20px" }}>
+        <div className="modal-overlay turn-alert-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content turn-alert-content">
+            <div className="turn-alert-icon"><Volume2 size={34} /></div>
+            <span className="turn-alert-kicker">QUEUE NOTIFICATION</span>
+            <h2 className="turn-alert-title">Ikaw na ang Tinatawag!</h2>
+            <p className="turn-alert-desc">
               Pumunta na agad sa counter ng <strong>{calledDepartment}</strong>.
             </p>
-
-            <div
-              style={{
-                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                color: "#ffffff",
-                padding: "15px",
-                borderRadius: "12px",
-                fontSize: "36px",
-                fontWeight: "bold",
-                letterSpacing: "2px",
-                marginBottom: "20px",
-                boxShadow: "0 10px 15px -3px rgba(37, 99, 235, 0.3)"
-              }}
-            >
-              {queue.yourNumber}
-            </div>
-
+            <div className="turn-ticket-number">{queue.yourNumber}</div>
             <button
               className="btn-primary"
-              style={{ width: "100%", padding: "12px", fontSize: "15px", fontWeight: "bold" }}
+              type="button"
               onClick={() => setShowTurnAlert(false)}
             >
-              Naiintindihan Ko / Proceed to Counter
+              <span>Proceed to Counter</span>
+              <ArrowRight size={17} />
             </button>
           </div>
         </div>
