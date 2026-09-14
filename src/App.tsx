@@ -34,6 +34,10 @@ import type { StudentInfo, QueueInfo, DocumentRequest } from "./types";
 import "./App.css";
 
 const App: React.FC = () => {
+  // Splash Screen State (3 Seconds Intro Animation)
+  const [showSplash, setShowSplash] = useState<boolean>(true);
+  const [splashExiting, setSplashExiting] = useState<boolean>(false);
+
   // Navigation & Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("home");
@@ -96,6 +100,22 @@ const App: React.FC = () => {
 
   // Document Requests State
   const [documentRequests, setDocumentRequests] = useState<DocumentRequest[]>([]);
+
+  // 3-Second Splash Animation Timer Effect
+  useEffect(() => {
+    const exitTimer = window.setTimeout(() => {
+      setSplashExiting(true);
+    }, 2400);
+
+    const hideTimer = window.setTimeout(() => {
+      setShowSplash(false);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(exitTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, []);
 
   // Toast Helper
   const showToast = (message: string) => {
@@ -226,9 +246,89 @@ const App: React.FC = () => {
     showToast(`Request submitted for ${selectedDoc}.`);
   };
 
+  // Premium splash stays mounted above the portal so both screens can crossfade smoothly.
+  const splashOverlay = showSplash ? (
+      <div className={`splash-screen premium-splash ${splashExiting ? "splash-exit" : ""}`}>
+        <div className="splash-grid" aria-hidden="true"></div>
+        <div className="splash-noise" aria-hidden="true"></div>
+        <div className="splash-vignette" aria-hidden="true"></div>
+
+        <div className="splash-aurora aurora-one" aria-hidden="true"></div>
+        <div className="splash-aurora aurora-two" aria-hidden="true"></div>
+        <div className="splash-aurora aurora-three" aria-hidden="true"></div>
+
+        <div className="splash-particles" aria-hidden="true">
+          {Array.from({ length: 14 }, (_, index) => (
+            <span key={index} className={`particle particle-${index + 1}`}></span>
+          ))}
+        </div>
+
+        <div className="splash-content premium-splash-content">
+          <div className="splash-eyebrow">
+            <Sparkles size={14} />
+            <span>CCDI Sorsogon Digital Campus</span>
+          </div>
+
+          <div className="splash-logo-stage">
+            <div className="orbit orbit-one"></div>
+            <div className="orbit orbit-two"></div>
+            <div className="orbit-dot dot-one"></div>
+            <div className="orbit-dot dot-two"></div>
+            <div className="logo-beam"></div>
+
+            <div className="splash-logo premium-logo">
+              <div className="logo-glass"></div>
+              <Building2 size={46} strokeWidth={1.85} />
+            </div>
+          </div>
+
+          <div className="splash-copy">
+            <h1 className="splash-title premium-title">
+              <span className="title-line">WELCOME TO</span>
+              <span className="title-brand">CCDI QUEUE</span>
+            </h1>
+
+            <p className="splash-subtitle premium-subtitle">
+              Smart Queueing & Student Services System
+            </p>
+          </div>
+
+          <div className="splash-loader-wrap">
+            <div className="loader-topline">
+              <span className="loader-status">
+                <span className="status-dot"></span>
+                Initializing portal
+              </span>
+              <span className="loader-percent">100%</span>
+            </div>
+
+            <div className="splash-loader-bar premium-loader">
+              <div className="splash-loader-fill premium-loader-fill"></div>
+              <div className="loader-shine"></div>
+            </div>
+
+            <div className="splash-feature-row">
+              <span><ShieldCheck size={13} /> Secure</span>
+              <span><Sparkles size={13} /> Realtime</span>
+              <span><Building2 size={13} /> Student Services</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="splash-scanline" aria-hidden="true"></div>
+      </div>
+  ) : null;
+
+  // Render Onboarding Verification Form
   if (!isSetupComplete) {
     return (
-      <div className={`onboarding-container ${isDarkMode ? "dark" : ""}`}>
+      <>
+        {splashOverlay}
+        <div
+          className={`onboarding-container ${isDarkMode ? "dark" : ""} ${
+            showSplash && !splashExiting ? "portal-preload" : "portal-reveal"
+          }`}
+        >
         <div className="bg-glow-1"></div>
         <div className="bg-glow-2"></div>
         <div className="bg-glow-3"></div>
@@ -344,12 +444,19 @@ const App: React.FC = () => {
             </button>
           </form>
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className={`dashboard-container ${isDarkMode ? "dark" : ""}`}>
+    <>
+      {splashOverlay}
+      <div
+        className={`dashboard-container ${isDarkMode ? "dark" : ""} ${
+          showSplash && !splashExiting ? "portal-preload" : "portal-reveal"
+        }`}
+      >
       {/* Toast Notification */}
       {notification && (
         <div className="toast-notification">
@@ -880,7 +987,8 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 
