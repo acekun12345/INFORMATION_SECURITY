@@ -50,18 +50,31 @@ Keep your own Firebase values private to your project configuration. The origina
 - Call next checks the expected current/next tickets again inside the transaction. A second operator using stale queue state cannot accidentally advance the queue a second time.
 - Complete & call next closes existing serving tickets and starts the next one atomically. Done completes the last ticket even when the queue is empty. Skip marks a no-show. Recall sends a fresh student alert without changing queue position.
 - People ahead is based on actual waiting tickets plus active service, not arithmetic subtraction of ticket numbers.
-- One pending mutation at a time, disabled unavailable actions, visible read/write errors, reconnect status and listener cleanup.
+- One pending mutation at a time, disabled unavailable actions, visible read/write errors, reconnect status, recovery from listener errors, and listener cleanup.
 - Student cancellation is limited to their waiting ticket. Serving tickets must be handled by staff.
 - Requests persist, have unique IDs and real timestamps. Staff can advance Pending → Processing → Ready → Released.
 - Native accessible dialogs provide Escape-to-close and focus management. Light/dark themes, mobile layouts and reduced-motion support share one stylesheet.
 - Hardcoded example balances were removed. The account balance screen states that a verified billing source is not connected.
 
-## Optional Firebase prototype connection
+## Firebase connection across devices
+
+The app defaults to **local demo mode** unless `VITE_QUEUE_MODE=firebase` is set at build time. Demo data is stored in each browser and does not sync between computers.
+
+For local development:
 
 1. Use a **separate test Firebase project/database**, or back up your existing database before testing migration.
 2. Copy `.env.example` to `.env.local`.
 3. Fill every Firebase configuration field and set `VITE_QUEUE_MODE=firebase`.
 4. Restart `npm run dev` (or rebuild when serving `dist`).
+
+For Vercel:
+
+1. Set the project **Root Directory** to `ccdi-queue`.
+2. In **Project Settings → Environment Variables**, add `VITE_QUEUE_MODE=firebase` and all five `VITE_FIREBASE_*` values from your Firebase web app. Apply them to Production (and Preview/Development if needed).
+3. Verify Realtime Database is enabled and its rules allow the intended access. Never make a production database publicly writable just to get past a permissions error.
+4. Redeploy after saving the variables; Vite embeds them during the build. Do not commit `.env.local` or database secrets.
+
+Firebase Realtime Database automatically reconnects its listeners when a connection returns. If a queue or document listener reports an error, the app now clears that listener's error after it receives valid data again, without clearing an error from the other listener.
 
 The Firebase adapter reads/writes these Realtime Database paths:
 

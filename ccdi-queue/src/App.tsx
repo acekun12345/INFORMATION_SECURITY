@@ -47,7 +47,8 @@ export default function App() {
   const [online, setOnline] = useState(false);
   const [queueReady, setQueueReady] = useState(false);
   const [docsReady, setDocsReady] = useState(false);
-  const [syncError, setSyncError] = useState('');
+  const [queueError, setQueueError] = useState('');
+  const [docsError, setDocsError] = useState('');
   const [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const pending = useRef(false);
@@ -55,6 +56,7 @@ export default function App() {
   const [turn, setTurn] = useState<QueueItem | null>(null);
   const lastCall = useRef('');
   const [sound, setSound] = useState(false);
+  const syncError = queueError || docsError;
   const ready = queueReady && docsReady && online && !syncError && !configurationError;
   const disabled = !ready || !!busy;
 
@@ -71,14 +73,16 @@ export default function App() {
   }, [notice]);
   useEffect(() => {
     if (!person || configurationError) return;
-    setQueueReady(false); setDocsReady(false); setSyncError('');
-    const error = (e: Error) => setSyncError(messageOf(e));
+    setQueueReady(false); setDocsReady(false); setQueueError(''); setDocsError('');
     const stops: (() => void)[] = [];
     try {
-      stops.push(watchQueues(items => { setQueues(items); setQueueReady(true); }, error));
-      stops.push(watchDocuments(items => { setDocuments(items); setDocsReady(true); }, error));
+      stops.push(watchQueues(items => { setQueues(items); setQueueReady(true); setQueueError(''); }, e => setQueueError(messageOf(e))));
+      stops.push(watchDocuments(items => { setDocuments(items); setDocsReady(true); setDocsError(''); }, e => setDocsError(messageOf(e))));
       stops.push(watchConnection(setOnline));
-    } catch (e) { error(e instanceof Error ? e : new Error(messageOf(e))); }
+    } catch (e) {
+      const error = messageOf(e);
+      setQueueError(error); setDocsError(error);
+    }
     return () => stops.forEach(stop => stop());
   }, [person, retry]);
 
@@ -122,7 +126,7 @@ export default function App() {
   }
   function logout() {
     if (pending.current) return;
-    setPerson(null); setQueues([]); setDocuments([]); setTurn(null); setModal(null); setNotice(null); setOnline(false); setQueueReady(false); setDocsReady(false); setSyncError(''); lastCall.current = '';
+    setPerson(null); setQueues([]); setDocuments([]); setTurn(null); setModal(null); setNotice(null); setOnline(false); setQueueReady(false); setDocsReady(false); setQueueError(''); setDocsError(''); lastCall.current = '';
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   }
   function staffAction(department: DepartmentType, action: StaffAction, servingIds: string[], nextId: string | null) {
