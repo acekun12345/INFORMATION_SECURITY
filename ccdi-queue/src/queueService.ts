@@ -6,6 +6,7 @@ import type { DepartmentType, DocumentRequest, DocumentStatus, QueueMap, StaffAc
 export { DEMO_MODE, configurationError };
 const DEMO_KEY = 'ccdi-queue-demo-v2';
 const DEMO_EVENT = 'ccdi-demo-update';
+const DATABASE_ROOT = 'ccdiQueue';
 interface DemoData { queues: QueueMap; documents: Record<string, DocumentRequest> }
 function readDemo(): DemoData {
   const raw = localStorage.getItem(DEMO_KEY);
@@ -34,7 +35,7 @@ function watchDemo(notify: (data: DemoData) => void, onError: (error: Error) => 
 }
 export function watchQueues(notify: (data: ReturnType<typeof readQueues>) => void, onError: (error: Error) => void) {
   if (DEMO_MODE) return watchDemo(data => notify(readQueues(data.queues)), onError);
-  return onValue(ref(liveDb(), 'queues'), snapshot => {
+  return onValue(ref(liveDb(), `${DATABASE_ROOT}/queues`), snapshot => {
     try { notify(readQueues(snapshot.val())); } catch (e) { onError(e instanceof Error ? e : new Error('Invalid queue data.')); }
   }, onError);
 }
@@ -46,11 +47,11 @@ async function changeQueues(change: (raw: QueueMap | null) => QueueMap) {
   if (DEMO_MODE) return demoMutation(data => ({ ...data, queues: change(data.queues) }));
   // Warm the cache via watchQueues before enabling controls. A transaction may
   // still start with null; its server retry will revalidate the complete state.
-  const result = await runTransaction(ref(liveDb(), 'queues'), change, { applyLocally: false });
+  const result = await runTransaction(ref(liveDb(), `${DATABASE_ROOT}/queues`), change, { applyLocally: false });
   if (!result.committed) throw new Error('Queue update was not committed. Please try again.');
 }
 export async function createTicket(person: StudentInfo, department: DepartmentType) {
-  const id = DEMO_MODE ? crypto.randomUUID() : push(ref(liveDb(), 'queues')).key!;
+  const id = DEMO_MODE ? crypto.randomUUID() : push(ref(liveDb(), `${DATABASE_ROOT}/queues`)).key!;
   const now = Date.now();
   await changeQueues(raw => joinQueue(raw, person, department, id, now));
 }
@@ -65,16 +66,16 @@ export async function cancelQueue(id: string, studentId: string) {
 export const DOCUMENTS = ['Certificate of Enrollment (COE)', 'Official Transcript of Records (TOR)', 'Good Moral Certificate'];
 export function watchDocuments(notify: (items: DocumentRequest[]) => void, onError: (error: Error) => void) {
   if (DEMO_MODE) return watchDemo(data => notify(readDocuments(data.documents)), onError);
-  return onValue(ref(liveDb(), 'documentRequests'), snapshot => {
+  return onValue(ref(liveDb(), `${DATABASE_ROOT}/documentRequests`), snapshot => {
     try { notify(readDocuments(snapshot.val())); } catch (e) { onError(e instanceof Error ? e : new Error('Invalid document request data.')); }
   }, onError);
 }
 export async function createDocument(person: StudentInfo, documentName: string, copies: number) {
   if (person.role !== 'Student' || !DOCUMENTS.includes(documentName) || !Number.isInteger(copies) || copies < 1 || copies > 5) throw new Error('Select a valid document and 1–5 copies.');
-  const id = DEMO_MODE ? crypto.randomUUID() : push(ref(liveDb(), 'documentRequests')).key!;
+  const id = DEMO_MODE ? crypto.randomUUID() : push(ref(liveDb(), `${DATABASE_ROOT}/documentRequests`)).key!;
   const doc: DocumentRequest = { id, studentId: person.studentId, studentName: person.name, documentName, copies, createdAt: Date.now(), status: 'Pending' };
   if (DEMO_MODE) return demoMutation(data => ({ ...data, documents: { ...data.documents, [id]: doc } }));
-  await set(ref(liveDb(), `documentRequests/${id}`), doc);
+  await set(ref(liveDb(), `${DATABASE_ROOT}/documentRequests/${id}`), doc);
 }
 export const NEXT_DOCUMENT_STATUS: Partial<Record<DocumentStatus, DocumentStatus>> = { Pending: 'Processing', Processing: 'Ready', Ready: 'Released' };
 export async function advanceDocument(doc: DocumentRequest) {
@@ -85,6 +86,6 @@ export async function advanceDocument(doc: DocumentRequest) {
     return { ...current, status: next };
   };
   if (DEMO_MODE) return demoMutation(data => ({ ...data, documents: { ...data.documents, [doc.id]: advance(data.documents[doc.id]) } }));
-  const result = await runTransaction(ref(liveDb(), `documentRequests/${doc.id}`), advance, { applyLocally: false });
+  const result = await runTransaction(ref(liveDb(), `${DATABASE_ROOT}/documentRequests/${doc.id}`), advance, { applyLocally: false });
   if (!result.committed) throw new Error('Document update was not committed.');
 }

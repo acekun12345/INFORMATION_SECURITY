@@ -58,33 +58,23 @@ Keep your own Firebase values private to your project configuration. The origina
 
 ## Firebase connection across devices
 
-The app defaults to **local demo mode** unless `VITE_QUEUE_MODE=firebase` is set at build time. Demo data is stored in each browser and does not sync between computers.
+Local development defaults to **local demo mode**. Production builds use the existing CCDI Firebase web configuration and store this app's data under a separate `/ccdiQueue/` namespace, leaving the old app's `/queues` and `/currentQueue` paths untouched.
 
-For local development:
+The Firebase web configuration is public client configuration, not an access-control mechanism. Actual access is controlled by Realtime Database rules. This prototype uses client-side role checks, not Firebase Authentication. Review your existing rules before enabling live mode, and do not make a production database publicly writable to work around permission errors.
 
-1. Use a **separate test Firebase project/database**, or back up your existing database before testing migration.
-2. Copy `.env.example` to `.env.local`.
-3. Fill every Firebase configuration field and set `VITE_QUEUE_MODE=firebase`.
-4. Restart `npm run dev` (or rebuild when serving `dist`).
+For local Firebase testing, copy `.env.example` to `.env.local`, set `VITE_QUEUE_MODE=firebase`, and restart `npm run dev`. Optional `VITE_FIREBASE_*` values can override the existing project configuration.
 
-For Vercel:
+For Vercel, set the project's **Root Directory** to `ccdi-queue` and deploy the latest `main` commit. Production builds select Firebase via `.env.production`; no Vercel environment variables are needed unless you want to override the Firebase web configuration. Vite embeds client settings at build time.
 
-1. Set the project **Root Directory** to `ccdi-queue`.
-2. In **Project Settings → Environment Variables**, add `VITE_QUEUE_MODE=firebase` and all five `VITE_FIREBASE_*` values from your Firebase web app. Apply them to Production (and Preview/Development if needed).
-3. Verify Realtime Database is enabled and its rules allow the intended access. Never make a production database publicly writable just to get past a permissions error.
-4. Redeploy after saving the variables; Vite embeds them during the build. Do not commit `.env.local` or database secrets.
-
-Firebase Realtime Database automatically reconnects its listeners when a connection returns. If a queue or document listener reports an error, the app now clears that listener's error after it receives valid data again, without clearing an error from the other listener.
-
-The Firebase adapter reads/writes these Realtime Database paths:
+The Firebase adapter reads and writes only these Realtime Database paths:
 
 | Path | Use |
 | --- | --- |
-| `/queues/{id}` | Existing flat queue record format; transactions operate on `/queues` |
-| `/documentRequests/{id}` | Document requests and status transitions |
+| `/ccdiQueue/queues/{id}` | Queue records; transactions operate on `/ccdiQueue/queues` |
+| `/ccdiQueue/documentRequests/{id}` | Document requests and status transitions |
 | `/.info/connected` | Actual connection state |
 
-Old `/currentQueue` is unused. **Stop all clients running the old code** before a migration; old `set()` writes can conflict with the new transaction workflow. Old document requests existed only in React state, so they cannot be recovered automatically.
+The database rules must permit the intended access under `/ccdiQueue`. This project does not modify Firebase rules. Old `/currentQueue` data is not imported; the legacy app's queue format is incompatible with this app's validated ticket format. Firebase Realtime Database automatically reconnects listeners, and the app clears each listener's error after it receives valid data again.
 
 Database rules must already authorize the relevant reads and writes. This package does **not** deploy rules, open your database, or authenticate a Firebase user. If your database requires Firebase Authentication, this prototype's shared-password login does not satisfy it; the app will show the permission error. Do not fix that by making a real student database public.
 
