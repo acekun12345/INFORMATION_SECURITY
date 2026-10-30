@@ -77,6 +77,15 @@ describe('staff operations', () => {
     const state = fixture(); state.a.createdAt = state.b.createdAt;
     expect(waitingFor([state.b, state.a], 'Cashier').map(q => q.id)).toEqual(['a', 'b']);
   });
+  it('lets a student rejoin after service completes and keeps the new ticket last despite clock skew', () => {
+    let state = staffTransition(fixture(), 'Cashier', 'next', [], 'a', 5000);
+    state = staffTransition(state, 'Cashier', 'next', ['a'], 'b', 6000);
+    state = joinQueue(state, student('004'), 'Cashier', 'e', 7000);
+    const rejoined = joinQueue(state, student('001'), 'Cashier', 'd', 1500);
+    expect(rejoined.a.status).toBe('Completed');
+    expect(rejoined.d.ticketNumber).toBe('C-104');
+    expect(waitingFor(Object.values(rejoined), 'Cashier').map(q => q.id)).toEqual(['e', 'd']);
+  });
 });
 describe('student cancellation', () => {
   it('cancels only an owned waiting ticket and permits joining again', () => {

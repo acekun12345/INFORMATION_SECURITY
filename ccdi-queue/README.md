@@ -49,6 +49,8 @@ Keep your own Firebase values private to your project configuration. The origina
 - A normalized student ID can have only one active ticket across departments. Existing legacy duplicates are shown for staff resolution.
 - Call next checks the expected current/next tickets again inside the transaction. A second operator using stale queue state cannot accidentally advance the queue a second time.
 - Complete & call next closes existing serving tickets and starts the next one atomically. Done completes the last ticket even when the queue is empty. Skip marks a no-show. Recall sends a fresh student alert without changing queue position.
+- Students can join again after their serving ticket is completed; their new, higher ticket number keeps them at the end of that department's line, independent of device clock differences.
+- Students can enable voice from the turn alert; it plays a test chime and announces their ticket when called.
 - People ahead is based on actual waiting tickets plus active service, not arithmetic subtraction of ticket numbers.
 - One pending mutation at a time, disabled unavailable actions, visible read/write errors, reconnect status, recovery from listener errors, and listener cleanup.
 - Student cancellation is limited to their waiting ticket. Serving tickets must be handled by staff.

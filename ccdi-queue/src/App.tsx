@@ -55,6 +55,8 @@ export default function App() {
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [turn, setTurn] = useState<QueueItem | null>(null);
   const lastCall = useRef('');
+  const lastSpokenCall = useRef('');
+  const audioContext = useRef<AudioContext | null>(null);
   const [sound, setSound] = useState(false);
   const syncError = queueError || docsError;
   const ready = queueReady && docsReady && online && !syncError && !configurationError;
@@ -91,14 +93,22 @@ export default function App() {
   const called = myActive.find(q => q.status === 'Serving');
   const callKey = called ? `${called.id}:${called.callCount || 1}:${called.calledAt || 0}` : '';
   useEffect(() => {
-    if (!person || person.role !== 'Student' || !ready || !called || !callKey || lastCall.current === callKey) return;
-    lastCall.current = callKey;
-    setTurn(called);
-    setModal(null);
-    if (sound && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(`Ticket ${called.ticketNumber}. Please proceed to ${called.department}.`));
+    if (!person || person.role !== 'Student' || !ready || !called || !callKey) return;
+    if (lastCall.current !== callKey) {
+      lastCall.current = callKey;
+      setTurn(called);
+      setModal(null);
     }
+    if (!sound || lastSpokenCall.current === callKey) return;
+    lastSpokenCall.current = callKey;
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(`Ticket ${called.ticketNumber}. Please proceed to ${called.department}.`);
+      utterance.volume = 1;
+      utterance.rate = 0.9;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
+    void playCallChime().catch(e => setNotice({ text: `Voice announcement is on, but the sound alert could not play: ${messageOf(e)}`, error: true }));
   }, [callKey, called, person, ready, sound]);
   useEffect(() => { if (turn && !myActive.some(q => q.id === turn.id && q.status === 'Serving')) setTurn(null); }, [queues, turn, myActive]);
 
@@ -109,6 +119,35 @@ export default function App() {
     try { await job(); setNotice({ text: success, error: false }); if (close) setModal(null); }
     catch (e) { setNotice({ text: messageOf(e), error: true }); }
     finally { pending.current = false; setBusy(null); }
+  }
+  async function playCallChime() {
+    const context = audioContext.current ?? new AudioContext();
+    audioContext.current = context;
+    if (context.state !== 'running') await context.resume();
+    const start = context.currentTime;
+    [660, 880].forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const at = start + index * 0.18;
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.12, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(at);
+      oscillator.stop(at + 0.31);
+    });
+  }
+  function toggleVoice() {
+    if (sound) {
+      setSound(false);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      return;
+    }
+    setSound(true);
+    void playCallChime().catch(e => setNotice({ text: `Could not enable sound: ${messageOf(e)}`, error: true }));
   }
   function login(e: FormEvent) {
     e.preventDefault();
@@ -126,7 +165,7 @@ export default function App() {
   }
   function logout() {
     if (pending.current) return;
-    setPerson(null); setQueues([]); setDocuments([]); setTurn(null); setModal(null); setNotice(null); setOnline(false); setQueueReady(false); setDocsReady(false); setQueueError(''); setDocsError(''); lastCall.current = '';
+    setPerson(null); setQueues([]); setDocuments([]); setTurn(null); setModal(null); setNotice(null); setOnline(false); setQueueReady(false); setDocsReady(false); setQueueError(''); setDocsError(''); lastCall.current = ''; lastSpokenCall.current = '';
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   }
   function staffAction(department: DepartmentType, action: StaffAction, servingIds: string[], nextId: string | null) {
@@ -165,7 +204,7 @@ export default function App() {
       {page === 'home' && <>
         <div className="cq-page-heading"><div><span className="cq-eyebrow">YOUR CAMPUS, CONNECTED</span><h1>Hello, {person.name.split(' ')[0]}<span>.</span></h1><p>Take care of campus errands, without the guesswork.</p></div><span className="cq-chip">{person.block} · {person.yearLevel}</span></div>
         <section className="cq-hero"><div><span className="cq-eyebrow">A BETTER WAY TO WAIT</span><h2>Your next stop,<br/>made simple.</h2><p>Choose a department and follow your ticket in real time.</p><button type="button" className="cq-btn cq-lime" disabled={disabled || !!ticket} onClick={() => setModal('queue')}>{ticket ? 'You have an active ticket' : 'Get a queue number'}<ArrowRight size={18}/></button></div><div className="cq-hero-ticket"><Ticket size={28}/><span>YOUR TICKET</span><strong>{ticket?.ticketNumber ?? 'YOU’RE NEXT'}</strong><small>{ticket ? `${ticket.department} · ${ticket.status}` : 'Less time in line. More time for you.'}</small></div></section>
-        {ticket && <section className="cq-panel cq-active-ticket"><div><span className="cq-eyebrow">{ticket.status === 'Serving' ? 'PLEASE PROCEED TO THE COUNTER' : 'YOUR PLACE IN LINE'}</span><h2>{ticket.ticketNumber} <span className={`cq-status cq-status-${ticket.status.toLowerCase()}`}>{ticket.status}</span></h2><p>{ticket.department} · {peopleAhead} people ahead</p>{myActive.length > 1 && <p className="cq-warning">Multiple older active tickets found. Staff can help resolve these.</p>}</div><div className="cq-ticket-actions"><button type="button" className="cq-btn cq-secondary" aria-pressed={sound} onClick={() => setSound(!sound)}><Volume2 size={16}/>Voice {sound ? 'on' : 'off'}</button>{ticket.status === 'Waiting' && <button type="button" className="cq-btn cq-secondary" disabled={disabled} onClick={() => void perform('cancel', () => cancelQueue(ticket.id, person.studentId), 'Ticket cancelled.')}>Cancel ticket</button>}</div></section>}
+        {ticket && <section className="cq-panel cq-active-ticket"><div><span className="cq-eyebrow">{ticket.status === 'Serving' ? 'PLEASE PROCEED TO THE COUNTER' : 'YOUR PLACE IN LINE'}</span><h2>{ticket.ticketNumber} <span className={`cq-status cq-status-${ticket.status.toLowerCase()}`}>{ticket.status}</span></h2><p>{ticket.department} · {peopleAhead} people ahead</p>{ticket.status === 'Serving' && <p>Your ticket is complete after staff marks it Done or calls the next student. You can then join again at the end of the line.</p>}{myActive.length > 1 && <p className="cq-warning">Multiple older active tickets found. Staff can help resolve these.</p>}</div><div className="cq-ticket-actions"><button type="button" className="cq-btn cq-secondary" aria-pressed={sound} onClick={toggleVoice}><Volume2 size={16}/>{sound ? 'Voice on' : 'Enable voice'}</button>{ticket.status === 'Waiting' && <button type="button" className="cq-btn cq-secondary" disabled={disabled} onClick={() => void perform('cancel', () => cancelQueue(ticket.id, person.studentId), 'Ticket cancelled.')}>Cancel ticket</button>}</div></section>}
         <div className="cq-section-heading"><h2>Live counters</h2><span>{queueReady ? 'Updates automatically' : 'Loading queue data…'}</span></div><div className="cq-live-counters">{DEPARTMENTS.map(d => <section className="cq-panel" key={d}><span className="cq-eyebrow">{d}</span><strong>{servingFor(queues, d)[0]?.ticketNumber ?? '—'}</strong><p>{waitingFor(queues, d).length} waiting · {servingFor(queues, d).length ? 'Now serving' : 'Counter available'}</p></section>)}</div>
         <div className="cq-section-heading"><h2>Student services</h2><span>Everything in one place</span></div><div className="cq-service-grid">{[{ title: 'Request a document', detail: 'COE, transcript and good moral certificates', icon: <FileText size={22}/>, action: () => setModal('request') }, { title: 'Track your requests', detail: `${myDocuments.length} submitted requests`, icon: <CheckCircle2 size={22}/>, action: () => setPage('documents') }, { title: 'Account balance', detail: 'School account information', icon: <Wallet size={22}/>, action: () => setModal('balance') }].map(s => <button type="button" className="cq-service-card" key={s.title} onClick={s.action}>{s.icon}<strong>{s.title}</strong><span>{s.detail}</span><ArrowRight size={18}/></button>)}</div>
       </>}
@@ -179,6 +218,6 @@ export default function App() {
       {modal === 'about' && <div className="cq-about"><p>Computer Communication Development Institute · Sorsogon Campus.</p><p>One queue for each department, real-time ticket tracking and a shared document request workflow.</p><p>{DEMO_MODE ? 'This demo saves records in your browser. Use two tabs to try the student and staff workflows.' : 'Firebase prototype using the queues and documentRequests paths.'} Production use requires Firebase Authentication and server-enforced roles.</p></div>}
       {notice?.error && <p className="cq-error" role="alert">{notice.text}</p>}
     </Modal>}
-    {turn && <Modal title="It's your turn!" onClose={() => setTurn(null)}><div className="cq-turn"><Volume2 size={36}/><strong>{turn.ticketNumber}</strong><h3>Please proceed to {turn.department}.</h3><p>The counter is ready to assist you.</p><button type="button" className="cq-btn cq-primary cq-full" onClick={() => setTurn(null)}>I'm on my way</button></div></Modal>}
+    {turn && <Modal title="It's your turn!" onClose={() => setTurn(null)}><div className="cq-turn"><Volume2 size={36}/><strong>{turn.ticketNumber}</strong><h3>Please proceed to {turn.department}.</h3><p>The counter is ready to assist you.</p><button type="button" className="cq-btn cq-secondary cq-full" aria-pressed={sound} onClick={toggleVoice}>{sound ? 'Voice on' : 'Enable voice and test sound'}</button><button type="button" className="cq-btn cq-primary cq-full" onClick={() => setTurn(null)}>I'm on my way</button></div></Modal>}
   </div>;
 }

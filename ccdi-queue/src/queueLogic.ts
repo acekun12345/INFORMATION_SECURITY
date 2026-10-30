@@ -2,7 +2,10 @@ import { DEPARTMENTS } from './types';
 import type { DepartmentType, DocumentRequest, QueueItem, QueueMap, StaffAction, StudentInfo } from './types';
 
 export const isActive = (q: QueueItem) => q.status === 'Waiting' || q.status === 'Serving';
-export const compareQueue = (a: QueueItem, b: QueueItem) => a.createdAt - b.createdAt || a.id.localeCompare(b.id);
+export const compareQueue = (a: QueueItem, b: QueueItem) =>
+  Number(a.ticketNumber.split('-')[1]) - Number(b.ticketNumber.split('-')[1]) ||
+  a.createdAt - b.createdAt ||
+  a.id.localeCompare(b.id);
 export const waitingFor = (items: QueueItem[], dept: DepartmentType) => items.filter(q => q.department === dept && q.status === 'Waiting').sort(compareQueue);
 export const servingFor = (items: QueueItem[], dept: DepartmentType) => items.filter(q => q.department === dept && q.status === 'Serving').sort(compareQueue);
 export const normalizeId = (value: string) => value.trim().toUpperCase();
